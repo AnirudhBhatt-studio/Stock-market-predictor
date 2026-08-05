@@ -67,3 +67,5 @@ streamlit run app.py
 
 - If the app fails to load ticker data, verify that the ticker symbol is valid.
 - This app uses Yahoo Finance data via `yfinance`, so an internet connection is required.
+- This is not to be used as a financial adviser as there are a lot of factors that effect stocks it is just a project so use it carefully.
+ 
