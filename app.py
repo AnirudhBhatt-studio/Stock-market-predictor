@@ -10,13 +10,27 @@ from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Input, LSTM, Dense, Dropout
 
+# NLTK for VADER Sentiment Analysis
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+@st.cache_resource
+def init_sentiment_analyzer():
+    try:
+        nltk.data.find('sentiment/vader_lexicon.zip')
+    except LookupError:
+        nltk.download('vader_lexicon', quiet=True)
+    return SentimentIntensityAnalyzer()
+
+sia = init_sentiment_analyzer()
+
 # ================= PAGE CONFIG =================
 st.set_page_config(layout="wide", page_title="Accelerated Stock Predictor", page_icon="🚀")
 
 # ================= HAIKEI & MOTION STYLING =================
 st.markdown("""
 <style>
-    /* 1. Haikei-inspired Layered Wave Background */
+    /* Haikei-inspired Layered Wave Background */
     .stApp {
         background-color: #0e1117;
         background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 800 500"><defs><linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:%231a1c2e;stop-opacity:1" /><stop offset="100%" style="stop-color:%230e1117;stop-opacity:1" /></linearGradient></defs><rect width="100%" height="100%" fill="url(%23grad)"/><path d="M0,192L48,202.7C96,213,192,235,288,224C384,213,480,171,576,165.3C672,160,768,192,816,208L864,224L864,500L816,500C768,500,672,500,576,500C480,500,384,500,288,500C192,500,96,500,48,500L0,500Z" fill="%23161b26" fill-opacity="0.6"></path><path d="M0,320L48,304C96,288,192,256,288,261.3C384,267,480,309,576,304C672,299,768,245,816,218.7L864,192L864,500L816,500C768,500,672,500,576,500C480,500,384,500,288,500C192,500,96,500,48,500L0,500Z" fill="%23212838" fill-opacity="0.4"></path></svg>');
@@ -24,7 +38,7 @@ st.markdown("""
         background-attachment: fixed;
     }
 
-    /* 2. Glassmorphism Card Containers */
+    /* Glassmorphism Card Containers */
     div[data-testid="stMetricValue"], div[data-testid="stMetric"] {
         background: rgba(255, 255, 255, 0.03);
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -35,13 +49,11 @@ st.markdown("""
         transition: transform 0.3s ease, border-color 0.3s ease;
     }
 
-    /* 3. Motion Micro-Interactions (Hover Lift Effect) */
     div[data-testid="stMetric"]:hover {
         transform: translateY(-4px);
         border-color: rgba(0, 210, 255, 0.4);
     }
 
-    /* Header Styling */
     .hero-title {
         font-size: 2.8rem;
         font-weight: 800;
@@ -67,19 +79,23 @@ st.markdown("""
 
 # ================= NAVIGATION & SIDEBAR =================
 st.sidebar.title("Navigation")
-nav_choice = st.sidebar.radio("Go to", ["Summary & Forecast", "Statistics & Analysis"])
+nav_choice = st.sidebar.radio("Go to", ["Summary & Forecast", "News & Sentiment", "Statistics & Analysis"])
 
 st.sidebar.subheader("Model Config")
 stock = st.sidebar.text_input("Ticker Symbol", "AAPL").upper().strip()
 prediction_days = st.sidebar.slider("Days to Predict", 1, 30, 10)
 epochs = st.sidebar.number_input("Training Epochs", 10, 200, 30)
 batch_size = st.sidebar.selectbox("Batch Size", [16, 32, 64], index=1)
+training_years = st.sidebar.slider("Training Data Years", 1, 10, 5)
+use_all_data = st.sidebar.checkbox("Use all available historical data", value=False)
 
 # ================= DATA LOADING =================
 @st.cache_data
-def load_data(ticker):
-    data = yf.download(ticker, period="5y")
-    if data.empty: return None
+def load_data(ticker, years, use_all):
+    period = "max" if use_all else f"{years}y"
+    data = yf.download(ticker, period=period)
+    if data.empty:
+        return None
     
     if isinstance(data.columns, pd.MultiIndex):
         data.columns = data.columns.get_level_values(0)
@@ -103,7 +119,6 @@ def train_deep_model(data, epochs, batch_size):
     X, y = np.array(X), np.array(y)
     X = np.reshape(X, (X.shape[0], X.shape[1], 1))
 
-    # Keras 3 architecture syntax
     model = Sequential([
         Input(shape=(X.shape[1], 1)),
         LSTM(units=100, return_sequences=True),
@@ -133,8 +148,7 @@ def predict_future(model, scaler, last_60_days, days_to_predict):
 
     return scaler.inverse_transform(future_predictions)
 
-# Fetch ticker data once for global usage
-df = load_data(stock)
+df = load_data(stock, training_years, use_all_data)
 
 # ================= VIEW 1: SUMMARY & FORECAST =================
 if nav_choice == "Summary & Forecast":
@@ -148,7 +162,6 @@ if nav_choice == "Summary & Forecast":
         col1.metric("Active Ticker", stock)
         col2.metric("Latest Close Price", f"${latest_price:,.2f}")
 
-        # Direct link button to Yahoo Finance
         st.link_button(
             f"🔍 Is {stock} a Long-Term Buy? View Analysis on Yahoo Finance",
             f"https://finance.yahoo.com/quote/{stock}/analysis"
@@ -166,7 +179,6 @@ if nav_choice == "Summary & Forecast":
         last_date = df.index[-1]
         future_dates = pd.date_range(start=last_date + pd.Timedelta(days=1), periods=prediction_days)
 
-        # ================= PLOTLY VISUALIZATION (AUTO-SCALING FIXED) =================
         fig = go.Figure()
 
         fig.add_trace(go.Scatter(
@@ -188,7 +200,6 @@ if nav_choice == "Summary & Forecast":
             line=dict(color='#ff4b4b', width=3, dash='dash')
         ))
 
-        # Dynamic layout scaling (prevents graph from vanishing on window resize)
         fig.update_layout(
             template="plotly_dark",
             paper_bgcolor='rgba(0,0,0,0)',
@@ -213,11 +224,70 @@ if nav_choice == "Summary & Forecast":
     else:
         st.error(f"Could not load data for symbol '{stock}'. Please verify the ticker symbol.")
 
-# ================= VIEW 2: STATISTICS & ANALYSIS =================
+# ================= VIEW 2: NEWS & SENTIMENT =================
+elif nav_choice == "News & Sentiment":
+    st.markdown(f'<p class="hero-title">📰 News & Sentiment Analysis — {stock}</p>', unsafe_allow_html=True)
+    st.markdown('<p class="hero-subtitle">Real-time Yahoo Finance headlines processed via VADER Sentiment Lexicon</p>', unsafe_allow_html=True)
+
+    ticker_obj = yf.Ticker(stock)
+    news_items = ticker_obj.news
+
+    if news_items:
+        parsed_news = []
+        for item in news_items:
+            # Handle variations in yfinance API return structures
+            content = item.get('content', {})
+            title = content.get('title') or item.get('title', 'No Title')
+            provider = content.get('provider', {}).get('displayName') or item.get('publisher', 'Unknown Source')
+            link = content.get('canonicalUrl', {}).get('url') or item.get('link', '#')
+
+            # VADER compound score computation
+            scores = sia.polarity_scores(title)
+            compound = scores['compound']
+            
+            if compound >= 0.05:
+                sentiment = "Positive"
+            elif compound <= -0.05:
+                sentiment = "Negative"
+            else:
+                sentiment = "Neutral"
+
+            parsed_news.append({
+                "Title": title,
+                "Source": provider,
+                "Sentiment": sentiment,
+                "Compound Score": compound,
+                "Link": link
+            })
+
+        news_df = pd.DataFrame(parsed_news)
+
+        avg_compound = news_df["Compound Score"].mean()
+        col1, col2 = st.columns(2)
+        
+        col1.metric("Overall Sentiment Score", f"{avg_compound:.2f}")
+        if avg_compound >= 0.05:
+            col2.success("Market Outlook: Bullish / Positive Sentiment")
+        elif avg_compound <= -0.05:
+            col2.error("Market Outlook: Bearish / Negative Sentiment")
+        else:
+            col2.info("Market Outlook: Neutral Sentiment")
+
+        st.write("---")
+        st.subheader("Recent Headlines")
+
+        for _, row in news_df.iterrows():
+            badge_color = "🟢" if row['Sentiment'] == "Positive" else ("🔴" if row['Sentiment'] == "Negative" else "⚪")
+            st.markdown(f"### {badge_color} [{row['Title']}]({row['Link']})")
+            st.caption(f"Source: **{row['Source']}** | Sentiment Score: **{row['Compound Score']:.2f}** ({row['Sentiment']})")
+            st.write("---")
+    else:
+        st.warning(f"No recent news articles were retrieved for {stock}.")
+
+# ================= VIEW 3: STATISTICS & ANALYSIS =================
 elif nav_choice == "Statistics & Analysis":
     st.markdown(f'<p class="hero-title">📊 Valuation & Statistics — {stock}</p>', unsafe_allow_html=True)
     
-    # Direct Yahoo Finance Redirection Button
     st.link_button(
         f"🔗 Open {stock} directly on Yahoo Finance",
         f"https://finance.yahoo.com/quote/{stock}"
@@ -225,7 +295,6 @@ elif nav_choice == "Statistics & Analysis":
 
     st.write("---")
 
-    # Fetch live dynamic metadata from Yahoo Finance
     ticker_obj = yf.Ticker(stock)
     
     try:
@@ -239,7 +308,6 @@ elif nav_choice == "Statistics & Analysis":
         mcap_str = f"${market_cap / 1e9:,.2f}B" if market_cap else "N/A"
         margin_str = f"{profit_margins * 100:.2f}%" if profit_margins else "N/A"
 
-        # DYNAMIC CALLOUT (Replaces hardcoded NVIDIA text)
         st.info(
             f"**{company_name} ({stock})** current Market Cap stands at **{mcap_str}** "
             f"with a Trailing P/E of **{trailing_pe}** and Forward P/E of **{forward_pe}**. "
@@ -248,7 +316,6 @@ elif nav_choice == "Statistics & Analysis":
 
         st.subheader("Valuation Measures")
 
-        # Dynamic metrics table built from live info dictionary
         metrics_df = pd.DataFrame({
             "Metric": [
                 "Market Cap", 
