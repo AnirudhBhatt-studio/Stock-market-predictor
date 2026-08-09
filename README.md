@@ -30,8 +30,8 @@ This application shifts away from naive price-regression setups and leverages **
 │ Market & Macro  │ ──> │ Feature Engineering  │ ──> │ HistGradientBoosting  │
 │ Data (yfinance) │     │ (ATR, RSI, VolRatio) │     │ Decision Ensembles    │
 └─────────────────┘     └──────────────────────┘     └───────────────────────┘
-│
-▼
+                                                                            │
+                                                                            ▼
 ┌─────────────────┐     ┌──────────────────────┐     ┌───────────────────────┐
 │ Streamlit UI    │ <── │ Dynamic Risk Limits  │ <── │ High-Confidence Filter│
 │ & Forecasts     │     │ (2x SL / 3x TP)      │     │ (Prob Cutoff >= 55%)  │
