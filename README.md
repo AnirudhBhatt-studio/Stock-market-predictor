@@ -1,8 +1,6 @@
-Here is a clean, comprehensive **`README.md`** tailored specifically for your Streamlit project repository.
 
----
 
-```markdown
+
 # ⚡ Quantitative Intelligence Engine
 
 A high-performance quantitative stock analysis and trading engine built with **Python**, **Streamlit**, and **Scikit-Learn**. 
